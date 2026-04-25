@@ -6,6 +6,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.metrics import accuracy_score, mean_absolute_error, r2_score
+from sklearn.model_selection import train_test_split
 
 
 st.set_page_config(
@@ -17,17 +20,17 @@ st.set_page_config(
 
 
 PRIMARY = "#d4a24c"
-ACCENT = "#8f5cf6"
-SUCCESS = "#4fbf8f"
-WARNING = "#d1703c"
-ROSE = "#e879c6"
-SURFACE = "#17131f"
-SURFACE_ALT = "#221a2c"
-BACKGROUND = "#0d0a13"
-TEXT = "#efe7db"
-MUTED = "#b2a6c2"
-BORDER = "rgba(212, 162, 76, 0.18)"
-PLOT_BG = "#17131f"
+ACCENT = "#5b8cff"
+SUCCESS = "#22c55e"
+WARNING = "#f59e0b"
+ROSE = "#38bdf8"
+SURFACE = "#0f172a"
+SURFACE_ALT = "#111827"
+BACKGROUND = "#020617"
+TEXT = "#e2e8f0"
+MUTED = "#94a3b8"
+BORDER = "rgba(96, 165, 250, 0.16)"
+PLOT_BG = "#0b1220"
 
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
 
@@ -42,22 +45,21 @@ def image_data_uri(filename: str) -> str:
 
 
 HERO_BG_URI = image_data_uri("velora-hero-bg.png")
-CREST_URI = image_data_uri("velora-dragon-crest.png")
 
 
 st.markdown(
     f"""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&display=swap');
 
         .stApp {{
             background: {BACKGROUND};
             color: {TEXT};
             background-image:
-                radial-gradient(circle at top left, rgba(143,92,246,0.18), transparent 28%),
-                radial-gradient(circle at top right, rgba(209,112,60,0.15), transparent 24%),
-                radial-gradient(circle at bottom center, rgba(232,121,198,0.08), transparent 30%),
-                linear-gradient(180deg, rgba(255,255,255,0.02), transparent 20%);
+                radial-gradient(circle at top left, rgba(56,189,248,0.12), transparent 24%),
+                radial-gradient(circle at top right, rgba(91,140,255,0.16), transparent 22%),
+                radial-gradient(circle at bottom center, rgba(34,197,94,0.06), transparent 30%),
+                linear-gradient(180deg, rgba(255,255,255,0.015), transparent 20%);
         }}
 
         .main .block-container {{
@@ -68,11 +70,10 @@ st.markdown(
 
         [data-testid="stSidebar"] {{
             background:
-                linear-gradient(180deg, rgba(18, 13, 27, 0.98), rgba(11, 9, 17, 0.98)),
-                url("{HERO_BG_URI}");
+                linear-gradient(180deg, rgba(6, 11, 23, 0.98), rgba(2, 6, 23, 0.98));
             background-size: cover;
             background-position: center;
-            border-right: 1px solid rgba(212, 162, 76, 0.14);
+            border-right: 1px solid rgba(96, 165, 250, 0.14);
         }}
 
         [data-testid="stSidebar"] > div:first-child {{
@@ -88,8 +89,8 @@ st.markdown(
         }}
 
         [data-testid="stSidebar"] .stFileUploader {{
-            background: rgba(23, 19, 31, 0.75);
-            border: 1px dashed rgba(212, 162, 76, 0.34);
+            background: rgba(15, 23, 42, 0.88);
+            border: 1px dashed rgba(96, 165, 250, 0.32);
             border-radius: 18px;
             padding: 0.5rem;
         }}
@@ -103,7 +104,7 @@ st.markdown(
         }}
 
         h1, h2 {{
-            font-family: "Cinzel", Georgia, serif;
+            font-family: "Space Grotesk", "Inter", Arial, sans-serif;
         }}
 
         .hero {{
@@ -111,13 +112,13 @@ st.markdown(
             overflow: hidden;
             padding: 2.9rem 2.6rem 2.35rem 2.6rem;
             background:
-                linear-gradient(135deg, rgba(13,10,19,0.82), rgba(30,19,40,0.88)),
+                linear-gradient(135deg, rgba(3,7,18,0.88), rgba(15,23,42,0.82)),
                 url("{HERO_BG_URI}");
             background-size: cover;
             background-position: center;
             border: 1px solid {BORDER};
             border-radius: 24px;
-            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.42);
         }}
 
         .hero::before {{
@@ -125,8 +126,8 @@ st.markdown(
             position: absolute;
             inset: 0;
             background:
-                radial-gradient(circle at 20% 20%, rgba(212,162,76,0.18), transparent 25%),
-                linear-gradient(90deg, rgba(13,10,19,0.84), rgba(13,10,19,0.35));
+                radial-gradient(circle at 20% 20%, rgba(56,189,248,0.14), transparent 24%),
+                linear-gradient(90deg, rgba(2,6,23,0.86), rgba(2,6,23,0.42));
             pointer-events: none;
         }}
 
@@ -137,7 +138,7 @@ st.markdown(
             width: 420px;
             height: 420px;
             border-radius: 50%;
-            background: radial-gradient(circle, rgba(212,162,76,0.16), transparent 66%);
+            background: radial-gradient(circle, rgba(91,140,255,0.18), transparent 66%);
             filter: blur(12px);
             pointer-events: none;
         }}
@@ -165,24 +166,54 @@ st.markdown(
         .hero-shell {{
             position: relative;
             display: grid;
-            grid-template-columns: minmax(0, 1fr) 220px;
+            grid-template-columns: minmax(0, 1fr) 160px;
             gap: 1.4rem;
             align-items: start;
         }}
 
-        .hero-crest-wrap {{
+        .hero-mark-wrap {{
             position: relative;
             display: flex;
             justify-content: flex-end;
             align-items: flex-start;
         }}
 
-        .hero-crest {{
-            width: 170px;
-            height: 170px;
-            object-fit: contain;
-            filter: drop-shadow(0 12px 30px rgba(0,0,0,0.34));
-            opacity: 0.98;
+        .hero-mark {{
+            width: 128px;
+            height: 128px;
+            border-radius: 28px;
+            border: 1px solid rgba(96,165,250,0.24);
+            background:
+                linear-gradient(145deg, rgba(15,23,42,0.92), rgba(30,41,59,0.72));
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,0.06),
+                0 18px 40px rgba(2,6,23,0.45);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }}
+
+        .hero-mark::before {{
+            content: "";
+            position: absolute;
+            inset: 14px;
+            border-radius: 22px;
+            border: 1px solid rgba(56,189,248,0.16);
+            background:
+                radial-gradient(circle at top, rgba(56,189,248,0.14), transparent 40%),
+                linear-gradient(180deg, rgba(255,255,255,0.02), transparent 80%);
+        }}
+
+        .hero-mark-text {{
+            position: relative;
+            font-family: "Space Grotesk", "Inter", Arial, sans-serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #dbeafe;
+            letter-spacing: 0.04em;
+            text-shadow: 0 0 30px rgba(91,140,255,0.25);
         }}
 
         .hero-copy {{
@@ -204,8 +235,8 @@ st.markdown(
         }}
 
         .hero-metric {{
-            background: rgba(10, 8, 15, 0.46);
-            border: 1px solid rgba(239,231,219,0.1);
+            background: rgba(2, 6, 23, 0.48);
+            border: 1px solid rgba(148,163,184,0.12);
             border-radius: 18px;
             padding: 0.85rem 0.95rem;
             backdrop-filter: blur(8px);
@@ -227,8 +258,8 @@ st.markdown(
 
         .section-card {{
             background:
-                linear-gradient(180deg, rgba(34, 26, 44, 0.95), rgba(23, 19, 31, 0.98));
-            border: 1px solid rgba(212, 162, 76, 0.14);
+                linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.98));
+            border: 1px solid rgba(96, 165, 250, 0.12);
             border-radius: 20px;
             padding: 1.1rem 1.1rem 1rem 1.1rem;
             box-shadow: 0 16px 44px rgba(0, 0, 0, 0.24);
@@ -244,7 +275,7 @@ st.markdown(
         }}
 
         .section-eyebrow {{
-            color: {PRIMARY};
+            color: {ACCENT};
             text-transform: uppercase;
             font-size: 0.75rem;
             letter-spacing: 0.12em;
@@ -253,8 +284,8 @@ st.markdown(
 
         .kpi-card {{
             background:
-                linear-gradient(180deg, rgba(34, 26, 44, 0.96), rgba(20, 16, 28, 0.96));
-            border: 1px solid rgba(212, 162, 76, 0.18);
+                linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(3, 7, 18, 0.98));
+            border: 1px solid rgba(96, 165, 250, 0.16);
             border-radius: 18px;
             padding: 1rem;
             box-shadow: 0 16px 32px rgba(0, 0, 0, 0.24);
@@ -288,9 +319,9 @@ st.markdown(
 
         .pill {{
             position: relative;
-            background: rgba(212,162,76,0.12);
-            border: 1px solid rgba(212,162,76,0.26);
-            color: #f8d998;
+            background: rgba(56,189,248,0.08);
+            border: 1px solid rgba(56,189,248,0.22);
+            color: #bae6fd;
             border-radius: 999px;
             padding: 0.38rem 0.8rem;
             font-size: 0.85rem;
@@ -305,8 +336,8 @@ st.markdown(
         }}
 
         .feature-tile {{
-            background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
-            border: 1px solid rgba(239,231,219,0.08);
+            background: linear-gradient(180deg, rgba(15,23,42,0.7), rgba(15,23,42,0.38));
+            border: 1px solid rgba(148,163,184,0.1);
             border-radius: 18px;
             padding: 1rem;
             backdrop-filter: blur(6px);
@@ -335,16 +366,16 @@ st.markdown(
         .ornament-card {{
             min-height: 130px;
             border-radius: 20px;
-            border: 1px solid rgba(212, 162, 76, 0.16);
+            border: 1px solid rgba(96, 165, 250, 0.12);
             background:
-                linear-gradient(180deg, rgba(31, 23, 42, 0.95), rgba(17, 13, 24, 0.96));
+                linear-gradient(180deg, rgba(15,23,42,0.95), rgba(2,6,23,0.96));
             box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 18px 34px rgba(0,0,0,0.2);
             padding: 1rem;
         }}
 
         .ornament-symbol {{
             font-size: 1.4rem;
-            color: {PRIMARY};
+            color: {ROSE};
             margin-bottom: 0.55rem;
         }}
 
@@ -364,8 +395,8 @@ st.markdown(
         .sidebar-brand {{
             padding: 0.95rem 1rem;
             border-radius: 18px;
-            border: 1px solid rgba(212, 162, 76, 0.18);
-            background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+            border: 1px solid rgba(96, 165, 250, 0.16);
+            background: linear-gradient(180deg, rgba(15,23,42,0.72), rgba(15,23,42,0.38));
             margin-bottom: 1rem;
         }}
 
@@ -378,14 +409,38 @@ st.markdown(
         .sidebar-brand-logo {{
             width: 58px;
             height: 58px;
-            object-fit: contain;
+            border-radius: 16px;
+            border: 1px solid rgba(96,165,250,0.2);
+            background: linear-gradient(145deg, rgba(15,23,42,0.92), rgba(30,41,59,0.76));
+            display: flex;
+            align-items: center;
+            justify-content: center;
             flex: 0 0 auto;
-            filter: drop-shadow(0 10px 18px rgba(0,0,0,0.3));
+            box-shadow: 0 10px 18px rgba(0,0,0,0.3);
+            position: relative;
+            overflow: hidden;
+        }}
+
+        .sidebar-brand-logo::before {{
+            content: "";
+            position: absolute;
+            inset: 8px;
+            border-radius: 12px;
+            border: 1px solid rgba(56,189,248,0.16);
+        }}
+
+        .sidebar-brand-logo-text {{
+            position: relative;
+            font-family: "Space Grotesk", "Inter", Arial, sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #dbeafe;
+            letter-spacing: 0.08em;
         }}
 
         .sidebar-brand-title {{
-            font-family: "Cinzel", Georgia, serif;
-            font-size: 1.55rem;
+            font-family: "Space Grotesk", "Inter", Arial, sans-serif;
+            font-size: 1.35rem;
             color: {TEXT};
             margin-bottom: 0.2rem;
         }}
@@ -399,20 +454,20 @@ st.markdown(
         [data-testid="stTabs"] button {{
             background: rgba(255,255,255,0.03);
             border-radius: 999px;
-            border: 1px solid rgba(212, 162, 76, 0.14);
+            border: 1px solid rgba(96, 165, 250, 0.12);
             color: {MUTED};
             padding: 0.45rem 0.9rem;
         }}
 
         [data-testid="stTabs"] button[aria-selected="true"] {{
-            background: linear-gradient(90deg, rgba(212,162,76,0.18), rgba(143,92,246,0.18));
+            background: linear-gradient(90deg, rgba(56,189,248,0.14), rgba(91,140,255,0.18));
             color: {TEXT};
-            border-color: rgba(212, 162, 76, 0.3);
+            border-color: rgba(96, 165, 250, 0.28);
         }}
 
         [data-testid="stMetric"] {{
-            background: linear-gradient(180deg, rgba(34, 26, 44, 0.95), rgba(23, 19, 31, 0.98));
-            border: 1px solid rgba(212, 162, 76, 0.14);
+            background: linear-gradient(180deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98));
+            border: 1px solid rgba(96, 165, 250, 0.12);
             padding: 1rem;
             border-radius: 18px;
         }}
@@ -428,13 +483,13 @@ st.markdown(
         [data-testid="stDataFrame"] {{
             border-radius: 16px;
             overflow: hidden;
-            border: 1px solid rgba(212, 162, 76, 0.12);
+            border: 1px solid rgba(96, 165, 250, 0.12);
         }}
 
         .stAlert {{
-            background: rgba(34, 26, 44, 0.92);
+            background: rgba(15, 23, 42, 0.92);
             color: {TEXT};
-            border: 1px solid rgba(212, 162, 76, 0.16);
+            border: 1px solid rgba(96, 165, 250, 0.14);
         }}
 
         .stSelectbox label, .stSlider label {{
@@ -443,15 +498,15 @@ st.markdown(
 
         div[data-baseweb="select"] > div,
         div[data-baseweb="input"] > div {{
-            background: rgba(18, 14, 24, 0.9);
-            border-color: rgba(212, 162, 76, 0.18);
+            background: rgba(15, 23, 42, 0.9);
+            border-color: rgba(96, 165, 250, 0.16);
             border-radius: 14px;
         }}
 
         .stDownloadButton button, .stButton button {{
-            background: linear-gradient(90deg, rgba(212,162,76,0.22), rgba(143,92,246,0.18));
+            background: linear-gradient(90deg, rgba(56,189,248,0.18), rgba(91,140,255,0.2));
             color: {TEXT};
-            border: 1px solid rgba(212,162,76,0.25);
+            border: 1px solid rgba(96,165,250,0.22);
             border-radius: 14px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.22);
         }}
@@ -472,13 +527,13 @@ st.markdown(
                 grid-template-columns: 1fr;
             }}
 
-            .hero-crest-wrap {{
+            .hero-mark-wrap {{
                 justify-content: flex-start;
             }}
 
-            .hero-crest {{
-                width: 120px;
-                height: 120px;
+            .hero-mark {{
+                width: 96px;
+                height: 96px;
             }}
 
             .hero-title {{
@@ -650,6 +705,259 @@ def describe_time_trend(grouped: pd.DataFrame, dt_col: str) -> str:
         f"This line shows how many rows appear over time using {dt_col}. "
         f"Higher points mean more records happened in that month. "
         f"The busiest point in this view is {peak['_date_bucket']} with {int(peak['Rows']):,} rows."
+    )
+
+
+def get_prediction_target_options(df: pd.DataFrame) -> list[str]:
+    options = []
+    for col in df.columns:
+        role = infer_column_role(df[col])
+        unique_count = df[col].nunique(dropna=True)
+        non_null_count = df[col].notna().sum()
+
+        if non_null_count < 12:
+            continue
+
+        if role == "numeric" and unique_count >= 8:
+            options.append(col)
+        elif role == "categorical" and 2 <= unique_count <= 20:
+            options.append(col)
+
+    return options
+
+
+@st.cache_resource(show_spinner=False)
+def train_prediction_model(df: pd.DataFrame, target_col: str) -> dict:
+    working = df.copy()
+    working = working.dropna(subset=[target_col]).copy()
+
+    target_role = infer_column_role(working[target_col])
+    feature_cols = [
+        col
+        for col in working.columns
+        if col != target_col and infer_column_role(working[col]) in {"numeric", "categorical"}
+    ]
+
+    if not feature_cols:
+        raise ValueError("There are no usable feature columns for prediction.")
+
+    model_df = working[feature_cols + [target_col]].copy()
+
+    numeric_features = [col for col in feature_cols if infer_column_role(model_df[col]) == "numeric"]
+    categorical_features = [col for col in feature_cols if infer_column_role(model_df[col]) == "categorical"]
+
+    for col in numeric_features:
+        model_df[col] = pd.to_numeric(model_df[col], errors="coerce")
+        model_df[col] = model_df[col].fillna(model_df[col].median())
+
+    category_defaults = {}
+    for col in categorical_features:
+        mode = model_df[col].mode(dropna=True)
+        default_value = str(mode.iloc[0]) if not mode.empty else "Missing"
+        category_defaults[col] = default_value
+        model_df[col] = model_df[col].fillna(default_value).astype(str)
+
+    if target_role == "numeric":
+        y = pd.to_numeric(model_df[target_col], errors="coerce")
+        usable = y.notna()
+        model_df = model_df.loc[usable].copy()
+        y = y.loc[usable]
+        model_type = "regression"
+    else:
+        y = model_df[target_col].fillna("Missing").astype(str)
+        model_type = "classification"
+
+    X_raw = model_df[feature_cols].copy()
+    X_encoded = pd.get_dummies(X_raw, columns=categorical_features, dummy_na=False)
+
+    if len(X_encoded) < 12:
+        raise ValueError("This dataset is too small for a meaningful prediction demo.")
+
+    stratify = y if model_type == "classification" and y.nunique() > 1 else None
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_encoded,
+        y,
+        test_size=0.2,
+        random_state=42,
+        stratify=stratify,
+    )
+
+    if model_type == "regression":
+        model = RandomForestRegressor(random_state=42, n_estimators=200)
+        model.fit(X_train, y_train)
+        preds = model.predict(X_test)
+        metrics = {
+            "primary_label": "Average Error",
+            "primary_value": mean_absolute_error(y_test, preds),
+            "secondary_label": "R2 Score",
+            "secondary_value": r2_score(y_test, preds),
+        }
+        explanation = (
+            f"Velora is predicting a number for `{target_col}`. "
+            f"On the holdout test data, the average miss was about {metrics['primary_value']:.2f}. "
+            f"The R2 score is {metrics['secondary_value']:.2f}, which tells you how well the model captures the overall pattern."
+        )
+    else:
+        model = RandomForestClassifier(random_state=42, n_estimators=200)
+        model.fit(X_train, y_train)
+        preds = model.predict(X_test)
+        metrics = {
+            "primary_label": "Accuracy",
+            "primary_value": accuracy_score(y_test, preds),
+            "secondary_label": "Classes",
+            "secondary_value": y.nunique(),
+        }
+        explanation = (
+            f"Velora is predicting a category for `{target_col}`. "
+            f"On the holdout test data, it was correct about {metrics['primary_value'] * 100:.1f}% of the time. "
+            f"This target has {int(metrics['secondary_value'])} possible categories."
+        )
+
+    feature_importance = (
+        pd.DataFrame(
+            {
+                "Feature": X_encoded.columns,
+                "Importance": model.feature_importances_,
+            }
+        )
+        .sort_values("Importance", ascending=False)
+        .head(8)
+    )
+
+    defaults = {}
+    categorical_choices = {}
+    for col in feature_cols:
+        if col in numeric_features:
+            defaults[col] = float(model_df[col].median())
+        else:
+            values = sorted(model_df[col].dropna().astype(str).unique().tolist())
+            categorical_choices[col] = values
+            defaults[col] = category_defaults[col]
+
+    return {
+        "target_col": target_col,
+        "model_type": model_type,
+        "model": model,
+        "feature_cols": feature_cols,
+        "numeric_features": numeric_features,
+        "categorical_features": categorical_features,
+        "training_columns": X_encoded.columns.tolist(),
+        "defaults": defaults,
+        "categorical_choices": categorical_choices,
+        "metrics": metrics,
+        "explanation": explanation,
+        "feature_importance": feature_importance,
+        "row_count": len(model_df),
+    }
+
+
+def build_prediction_lab(df: pd.DataFrame) -> None:
+    target_options = get_prediction_target_options(df)
+    if not target_options:
+        st.info("This dataset does not have a clear prediction target yet. Try a file with a numeric outcome or a low-cardinality category column.")
+        return
+
+    selected_target = st.selectbox("Choose the column Velora should predict", target_options, key="prediction_target")
+
+    try:
+        model_bundle = train_prediction_model(df, selected_target)
+    except Exception as exc:
+        st.warning(f"Velora could not train a prediction model for this column: {exc}")
+        return
+
+    left, right = st.columns([1.2, 1])
+
+    with left:
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        section_header("Prediction Readiness", "Machine Learning")
+        st.write(f"Target column: `{model_bundle['target_col']}`")
+        st.write(f"Model type: `{model_bundle['model_type'].title()}`")
+        st.write(f"Training rows used: `{model_bundle['row_count']:,}`")
+        st.write(f"Input features used: `{len(model_bundle['feature_cols'])}`")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with right:
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        section_header("Model Quality", "Score")
+        metrics = model_bundle["metrics"]
+        if model_bundle["model_type"] == "regression":
+            st.metric(metrics["primary_label"], f"{metrics['primary_value']:.2f}")
+            st.metric(metrics["secondary_label"], f"{metrics['secondary_value']:.2f}")
+        else:
+            st.metric(metrics["primary_label"], f"{metrics['primary_value'] * 100:.1f}%")
+            st.metric(metrics["secondary_label"], int(metrics["secondary_value"]))
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    write_plain_summary("How to read this prediction model", model_bundle["explanation"])
+
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    section_header("Prediction Form", "Try It")
+    input_values = {}
+    form_cols = st.columns(2)
+    for index, col in enumerate(model_bundle["feature_cols"]):
+        with form_cols[index % 2]:
+            if col in model_bundle["numeric_features"]:
+                input_values[col] = st.number_input(
+                    col,
+                    value=float(model_bundle["defaults"][col]),
+                    key=f"pred_input_{col}",
+                )
+            else:
+                choices = model_bundle["categorical_choices"][col]
+                default_value = model_bundle["defaults"][col]
+                default_index = choices.index(default_value) if default_value in choices else 0
+                input_values[col] = st.selectbox(
+                    col,
+                    choices,
+                    index=default_index,
+                    key=f"pred_input_{col}",
+                )
+
+    if st.button("Generate Prediction"):
+        input_df = pd.DataFrame([input_values])
+        for col in model_bundle["numeric_features"]:
+            input_df[col] = pd.to_numeric(input_df[col], errors="coerce").fillna(model_bundle["defaults"][col])
+        for col in model_bundle["categorical_features"]:
+            input_df[col] = input_df[col].fillna(model_bundle["defaults"][col]).astype(str)
+
+        input_encoded = pd.get_dummies(input_df, columns=model_bundle["categorical_features"], dummy_na=False)
+        input_encoded = input_encoded.reindex(columns=model_bundle["training_columns"], fill_value=0)
+
+        prediction = model_bundle["model"].predict(input_encoded)[0]
+
+        if model_bundle["model_type"] == "regression":
+            prediction_text = f"{prediction:,.2f}"
+            summary = f"Velora predicts that `{selected_target}` will be about {prediction:,.2f} for the values you entered."
+        else:
+            prediction_text = str(prediction)
+            summary = f"Velora predicts that `{selected_target}` will most likely be `{prediction}` for the values you entered."
+
+        st.success("Prediction ready.")
+        st.metric("Predicted Result", prediction_text)
+        write_plain_summary("Prediction in plain English", summary)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    section_header("What Influences This Prediction Most", "Importance")
+    fig = px.bar(
+        model_bundle["feature_importance"].sort_values("Importance"),
+        x="Importance",
+        y="Feature",
+        orientation="h",
+        text="Importance",
+        color_discrete_sequence=[ACCENT],
+    )
+    fig.update_traces(texttemplate="%{text:.2f}", textposition="outside", cliponaxis=False)
+    fig.update_layout(showlegend=False)
+    style_figure(fig, height=360)
+    st.plotly_chart(fig, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    write_plain_summary(
+        "What this chart means",
+        "The features at the top had the biggest impact on the model's decision. "
+        "This does not prove cause and effect, but it does show which fields the model relied on most.",
     )
 
 
@@ -957,16 +1265,18 @@ with st.sidebar:
         """
         <div class="sidebar-brand">
             <div class="sidebar-brand-head">
-                <img class="sidebar-brand-logo" src="%s" alt="Velora crest" />
+                <div class="sidebar-brand-logo">
+                    <div class="sidebar-brand-logo-text">VL</div>
+                </div>
                 <div>
                     <div class="sidebar-brand-title">Velora</div>
                     <div class="sidebar-brand-copy">
-                        A dramatic little observatory for CSVs, strange patterns, and unexpectedly pretty evidence.
+                        A dark, modern workspace for CSV exploration, fast insights, and lightweight machine learning.
                     </div>
                 </div>
             </div>
         </div>
-        """ % CREST_URI,
+        """,
         unsafe_allow_html=True,
     )
     uploaded_file = st.file_uploader("Upload a CSV file", type=["csv"])
@@ -984,36 +1294,37 @@ if uploaded_file is None:
         <div class="hero">
             <div class="hero-shell">
                 <div>
-                    <div class="hero-kicker">Velora / Archive Session</div>
+                    <div class="hero-kicker">Velora / Data Workspace</div>
                     <div class="hero-title">Velora</div>
                     <div class="hero-copy">
-                        A moody little analysis studio for chaotic CSVs. Upload almost any dataset and Velora turns it into
-                        a readable artifact with structure detection, data-quality checks, visible category summaries,
-                        distributions, and fast exploratory visuals.
+                        Upload almost any CSV and turn it into a clean, readable analysis workspace with automatic profiling,
+                        plain-English summaries, and built-in prediction tools.
                     </div>
                     <div class="pill-row">
-                        <div class="pill">Dark archive aesthetic</div>
+                        <div class="pill">Dark tech interface</div>
                         <div class="pill">Works with many dataset types</div>
                         <div class="pill">Automatic profiling</div>
-                        <div class="pill">Visible labels, not hover traps</div>
+                        <div class="pill">Built-in ML tab</div>
                     </div>
                     <div class="hero-metrics">
                         <div class="hero-metric">
                             <div class="hero-metric-label">Mode</div>
-                            <div class="hero-metric-value">Upload-first studio</div>
+                            <div class="hero-metric-value">Upload-first workspace</div>
                         </div>
                         <div class="hero-metric">
                             <div class="hero-metric-label">Best for</div>
-                            <div class="hero-metric-value">Exploration + storyfinding</div>
+                            <div class="hero-metric-value">Exploration + prediction</div>
                         </div>
                         <div class="hero-metric">
-                            <div class="hero-metric-label">Visual language</div>
-                            <div class="hero-metric-value">Dark archive / ember violet</div>
+                            <div class="hero-metric-label">Style</div>
+                            <div class="hero-metric-value">Dark glass / electric blue</div>
                         </div>
                     </div>
                 </div>
-                <div class="hero-crest-wrap">
-                    <img class="hero-crest" src="%s" alt="Velora dragon crest" />
+                <div class="hero-mark-wrap">
+                    <div class="hero-mark">
+                        <div class="hero-mark-text">VL</div>
+                    </div>
                 </div>
             </div>
             <div class="feature-grid">
@@ -1037,22 +1348,22 @@ if uploaded_file is None:
             <div class="ornament-grid">
                 <div class="ornament-card">
                     <div class="ornament-symbol">01</div>
-                    <div class="ornament-title">Dark Academia Spine</div>
-                    <div class="ornament-copy">Ink-dark surfaces, brass highlights, serif display type, and a little old-library drama.</div>
+                    <div class="ornament-title">Data Profiling</div>
+                    <div class="ornament-copy">Automatic structure checks, missing-value review, and schema detection in a cleaner layout.</div>
                 </div>
                 <div class="ornament-card">
                     <div class="ornament-symbol">02</div>
-                    <div class="ornament-title">Dragon Core Edge</div>
-                    <div class="ornament-copy">Smoky violet, ember copper, and jewel-tone accents that make charts feel less corporate and more collectible.</div>
+                    <div class="ornament-title">Prediction Lab</div>
+                    <div class="ornament-copy">Choose a target column, train a model, and test predictions without leaving the app.</div>
                 </div>
                 <div class="ornament-card">
                     <div class="ornament-symbol">03</div>
                     <div class="ornament-title">Readable by Design</div>
-                    <div class="ornament-copy">Counts, shares, and type mix are shown directly so you do not have to hunt for the meaning with a cursor.</div>
+                    <div class="ornament-copy">Charts still look good, but the summaries explain them in plain language for non-technical users.</div>
                 </div>
             </div>
         </div>
-        """ % CREST_URI,
+        """,
         unsafe_allow_html=True,
     )
 
@@ -1117,8 +1428,10 @@ st.markdown(
                     </div>
                 </div>
             </div>
-            <div class="hero-crest-wrap">
-                <img class="hero-crest" src="{CREST_URI}" alt="Velora dragon crest" />
+            <div class="hero-mark-wrap">
+                <div class="hero-mark">
+                    <div class="hero-mark-text">VL</div>
+                </div>
             </div>
         </div>
     </div>
@@ -1126,8 +1439,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    ["Overview", "Numeric Analysis", "Category Analysis", "Time Analysis", "Data Table"]
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+    ["Overview", "Numeric Analysis", "Category Analysis", "Time Analysis", "Prediction Lab", "Data Table"]
 )
 
 with tab1:
@@ -1145,6 +1458,9 @@ with tab4:
     build_time_analysis(df)
 
 with tab5:
+    build_prediction_lab(df)
+
+with tab6:
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     section_header("Dataset Preview", "Table")
     st.dataframe(df, use_container_width=True)
