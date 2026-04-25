@@ -1,4 +1,6 @@
+import base64
 import math
+from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
@@ -8,7 +10,7 @@ import streamlit as st
 
 st.set_page_config(
     page_title="Velora",
-    page_icon="DS",
+    page_icon="🐉",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -27,10 +29,27 @@ MUTED = "#b2a6c2"
 BORDER = "rgba(212, 162, 76, 0.18)"
 PLOT_BG = "#17131f"
 
+ASSET_DIR = Path(__file__).resolve().parent / "assets"
+
+
+def image_data_uri(filename: str) -> str:
+    path = ASSET_DIR / filename
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    suffix = path.suffix.lower().replace(".", "") or "png"
+    if suffix == "jpg":
+        suffix = "jpeg"
+    return f"data:image/{suffix};base64,{encoded}"
+
+
+HERO_BG_URI = image_data_uri("velora-hero-bg.png")
+CREST_URI = image_data_uri("velora-dragon-crest.png")
+
 
 st.markdown(
     f"""
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
         .stApp {{
             background: {BACKGROUND};
             color: {TEXT};
@@ -50,7 +69,7 @@ st.markdown(
         [data-testid="stSidebar"] {{
             background:
                 linear-gradient(180deg, rgba(18, 13, 27, 0.98), rgba(11, 9, 17, 0.98)),
-                url("https://images.unsplash.com/photo-1518709268805-4e9042af2176?auto=format&fit=crop&w=900&q=80");
+                url("{HERO_BG_URI}");
             background-size: cover;
             background-position: center;
             border-right: 1px solid rgba(212, 162, 76, 0.14);
@@ -79,8 +98,12 @@ st.markdown(
             letter-spacing: 0;
         }}
 
+        html, body, [class*="css"] {{
+            font-family: "Inter", Arial, sans-serif;
+        }}
+
         h1, h2 {{
-            font-family: Georgia, "Times New Roman", serif;
+            font-family: "Cinzel", Georgia, serif;
         }}
 
         .hero {{
@@ -89,7 +112,7 @@ st.markdown(
             padding: 2.9rem 2.6rem 2.35rem 2.6rem;
             background:
                 linear-gradient(135deg, rgba(13,10,19,0.82), rgba(30,19,40,0.88)),
-                url("https://images.unsplash.com/photo-1511497584788-876760111969?auto=format&fit=crop&w=1600&q=80");
+                url("{HERO_BG_URI}");
             background-size: cover;
             background-position: center;
             border: 1px solid {BORDER};
@@ -137,6 +160,29 @@ st.markdown(
             font-size: 0.8rem;
             font-weight: 700;
             letter-spacing: 0.14em;
+        }}
+
+        .hero-shell {{
+            position: relative;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 220px;
+            gap: 1.4rem;
+            align-items: start;
+        }}
+
+        .hero-crest-wrap {{
+            position: relative;
+            display: flex;
+            justify-content: flex-end;
+            align-items: flex-start;
+        }}
+
+        .hero-crest {{
+            width: 170px;
+            height: 170px;
+            object-fit: contain;
+            filter: drop-shadow(0 12px 30px rgba(0,0,0,0.34));
+            opacity: 0.98;
         }}
 
         .hero-copy {{
@@ -323,8 +369,22 @@ st.markdown(
             margin-bottom: 1rem;
         }}
 
+        .sidebar-brand-head {{
+            display: flex;
+            align-items: center;
+            gap: 0.85rem;
+        }}
+
+        .sidebar-brand-logo {{
+            width: 58px;
+            height: 58px;
+            object-fit: contain;
+            flex: 0 0 auto;
+            filter: drop-shadow(0 10px 18px rgba(0,0,0,0.3));
+        }}
+
         .sidebar-brand-title {{
-            font-family: Georgia, "Times New Roman", serif;
+            font-family: "Cinzel", Georgia, serif;
             font-size: 1.55rem;
             color: {TEXT};
             margin-bottom: 0.2rem;
@@ -408,6 +468,19 @@ st.markdown(
                 grid-template-columns: 1fr;
             }}
 
+            .hero-shell {{
+                grid-template-columns: 1fr;
+            }}
+
+            .hero-crest-wrap {{
+                justify-content: flex-start;
+            }}
+
+            .hero-crest {{
+                width: 120px;
+                height: 120px;
+            }}
+
             .hero-title {{
                 font-size: 2.4rem;
             }}
@@ -486,6 +559,100 @@ def section_header(title: str, eyebrow: str, note: str | None = None) -> None:
     )
 
 
+def explain_number(value: int | float) -> str:
+    if isinstance(value, float):
+        return f"{value:,.2f}"
+    return f"{value:,}"
+
+
+def write_plain_summary(title: str, body: str) -> None:
+    st.markdown(
+        f"""
+        <div class="section-card" style="margin-top: 0.85rem;">
+            <div class="section-eyebrow">What This Means</div>
+            <div style="font-size: 1.02rem; font-weight: 700; margin: 0.2rem 0 0.45rem 0;">{title}</div>
+            <div class="mini-note" style="font-size: 0.95rem; line-height: 1.7; color: {TEXT};">{body}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def describe_overview(df: pd.DataFrame) -> str:
+    missing_cells = int(df.isna().sum().sum())
+    duplicates = int(df.duplicated().sum())
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    categorical_cols = [col for col in df.columns if infer_column_role(df[col]) in {"categorical", "text"}]
+
+    return (
+        f"This file has {len(df):,} rows and {len(df.columns):,} columns. "
+        f"It includes {len(numeric_cols):,} number-based fields and {len(categorical_cols):,} text or category fields. "
+        f"There are {missing_cells:,} missing values and {duplicates:,} duplicate rows, so this section helps you quickly spot whether the dataset looks clean or messy."
+    )
+
+
+def describe_numeric_column(df: pd.DataFrame, column: str) -> str:
+    series = df[column].dropna()
+    if series.empty:
+        return f"There is no usable numeric data in {column} yet."
+
+    avg = series.mean()
+    low = series.min()
+    high = series.max()
+
+    return (
+        f"This chart shows how the values of {column} are spread out. "
+        f"Most people can read it like this: taller bars mean more rows fall in that range. "
+        f"For {column}, the average is about {avg:,.2f}, with values ranging from {low:,.2f} to {high:,.2f}."
+    )
+
+
+def describe_comparison(df: pd.DataFrame, x_col: str, y_col: str) -> str:
+    corr = df[[x_col, y_col]].corr(numeric_only=True).iloc[0, 1]
+    if pd.isna(corr):
+        relation = "There is not enough clean data here to explain the relationship."
+    elif corr > 0.6:
+        relation = "These two columns usually rise together pretty strongly."
+    elif corr > 0.2:
+        relation = "These two columns have a mild positive relationship."
+    elif corr < -0.6:
+        relation = "When one goes up, the other usually goes down quite strongly."
+    elif corr < -0.2:
+        relation = "There is a mild opposite relationship between them."
+    else:
+        relation = "There does not seem to be a strong relationship between them."
+
+    return (
+        f"Each dot is one row from your dataset. "
+        f"The horizontal position shows {x_col} and the vertical position shows {y_col}. "
+        f"{relation}"
+    )
+
+
+def describe_category_counts(counts: pd.DataFrame, column: str) -> str:
+    if counts.empty:
+        return f"There is no readable category information in {column} yet."
+
+    top_row = counts.iloc[-1]
+    return (
+        f"This chart shows the most common values in {column}. "
+        f"The biggest group here is {top_row[column]}, with {int(top_row['Count']):,} rows, or about {top_row['Share']:.1f}% of the displayed total. "
+        f"This helps someone quickly see which group dominates the dataset."
+    )
+
+
+def describe_time_trend(grouped: pd.DataFrame, dt_col: str) -> str:
+    if grouped.empty:
+        return f"There is no time pattern available for {dt_col}."
+
+    peak = grouped.loc[grouped["Rows"].idxmax()]
+    return (
+        f"This line shows how many rows appear over time using {dt_col}. "
+        f"Higher points mean more records happened in that month. "
+        f"The busiest point in this view is {peak['_date_bucket']} with {int(peak['Rows']):,} rows."
+    )
+
+
 def style_figure(fig: go.Figure, height: int = 360) -> go.Figure:
     fig.update_layout(
         template="plotly_white",
@@ -494,6 +661,7 @@ def style_figure(fig: go.Figure, height: int = 360) -> go.Figure:
         margin=dict(l=12, r=12, t=20, b=12),
         height=height,
         font=dict(color=TEXT, family="Inter, Arial"),
+        colorway=[PRIMARY, ACCENT, ROSE, SUCCESS, WARNING],
         hoverlabel=dict(bgcolor="#120f1a", font_color=TEXT),
         legend=dict(
             bgcolor="rgba(23, 19, 31, 0.82)",
@@ -579,6 +747,8 @@ def build_overview(df: pd.DataFrame) -> None:
         st.plotly_chart(fig, use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
+    write_plain_summary("Overview in simple words", describe_overview(df))
+
 
 def build_numeric_analysis(df: pd.DataFrame) -> None:
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
@@ -617,6 +787,11 @@ def build_numeric_analysis(df: pd.DataFrame) -> None:
         st.dataframe(stats, use_container_width=True, hide_index=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
+    write_plain_summary(
+        f"How to read {selected_numeric}",
+        describe_numeric_column(df, selected_numeric),
+    )
+
     if compare_numeric != "None" and compare_numeric != selected_numeric:
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
         section_header(f"{selected_numeric} vs {compare_numeric}", "Comparison")
@@ -633,6 +808,10 @@ def build_numeric_analysis(df: pd.DataFrame) -> None:
         corr = df[[selected_numeric, compare_numeric]].corr(numeric_only=True).iloc[0, 1]
         st.caption(f"Correlation: {corr:.3f}")
         st.markdown("</div>", unsafe_allow_html=True)
+        write_plain_summary(
+            f"Comparing {selected_numeric} and {compare_numeric}",
+            describe_comparison(df, selected_numeric, compare_numeric),
+        )
 
 
 def build_categorical_analysis(df: pd.DataFrame) -> None:
@@ -693,6 +872,11 @@ def build_categorical_analysis(df: pd.DataFrame) -> None:
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
+    write_plain_summary(
+        f"How to read {selected_cat}",
+        describe_category_counts(counts, selected_cat),
+    )
+
 
 def build_time_analysis(df: pd.DataFrame) -> None:
     datetime_cols = [col for col in df.columns if infer_column_role(df[col]) == "datetime"]
@@ -716,6 +900,10 @@ def build_time_analysis(df: pd.DataFrame) -> None:
     style_figure(fig, height=380)
     st.plotly_chart(fig, use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
+    write_plain_summary(
+        f"How to read the timeline for {dt_col}",
+        describe_time_trend(grouped, dt_col),
+    )
 
 
 def build_insights(df: pd.DataFrame) -> None:
@@ -757,18 +945,28 @@ def build_insights(df: pd.DataFrame) -> None:
     for bullet in bullets:
         st.write(f"- {bullet}")
     st.markdown("</div>", unsafe_allow_html=True)
+    write_plain_summary(
+        "Quick takeaway",
+        "This section turns the dataset into a few simple observations so someone does not have to inspect every chart manually. "
+        "If a field is mentioned here, it usually means it is worth paying attention to first.",
+    )
 
 
 with st.sidebar:
     st.markdown(
         """
         <div class="sidebar-brand">
-            <div class="sidebar-brand-title">Velora</div>
-            <div class="sidebar-brand-copy">
-                A dramatic little observatory for CSVs, strange patterns, and unexpectedly pretty evidence.
+            <div class="sidebar-brand-head">
+                <img class="sidebar-brand-logo" src="%s" alt="Velora crest" />
+                <div>
+                    <div class="sidebar-brand-title">Velora</div>
+                    <div class="sidebar-brand-copy">
+                        A dramatic little observatory for CSVs, strange patterns, and unexpectedly pretty evidence.
+                    </div>
+                </div>
             </div>
         </div>
-        """,
+        """ % CREST_URI,
         unsafe_allow_html=True,
     )
     uploaded_file = st.file_uploader("Upload a CSV file", type=["csv"])
@@ -784,31 +982,38 @@ if uploaded_file is None:
     st.markdown(
         """
         <div class="hero">
-            <div class="hero-kicker">Velora / Archive Session</div>
-            <div class="hero-title">Velora</div>
-            <div class="hero-copy">
-                A moody little analysis studio for chaotic CSVs. Upload almost any dataset and Velora turns it into
-                a readable artifact with structure detection, data-quality checks, visible category summaries,
-                distributions, and fast exploratory visuals.
-            </div>
-            <div class="pill-row">
-                <div class="pill">Dark archive aesthetic</div>
-                <div class="pill">Works with many dataset types</div>
-                <div class="pill">Automatic profiling</div>
-                <div class="pill">Visible labels, not hover traps</div>
-            </div>
-            <div class="hero-metrics">
-                <div class="hero-metric">
-                    <div class="hero-metric-label">Mode</div>
-                    <div class="hero-metric-value">Upload-first studio</div>
+            <div class="hero-shell">
+                <div>
+                    <div class="hero-kicker">Velora / Archive Session</div>
+                    <div class="hero-title">Velora</div>
+                    <div class="hero-copy">
+                        A moody little analysis studio for chaotic CSVs. Upload almost any dataset and Velora turns it into
+                        a readable artifact with structure detection, data-quality checks, visible category summaries,
+                        distributions, and fast exploratory visuals.
+                    </div>
+                    <div class="pill-row">
+                        <div class="pill">Dark archive aesthetic</div>
+                        <div class="pill">Works with many dataset types</div>
+                        <div class="pill">Automatic profiling</div>
+                        <div class="pill">Visible labels, not hover traps</div>
+                    </div>
+                    <div class="hero-metrics">
+                        <div class="hero-metric">
+                            <div class="hero-metric-label">Mode</div>
+                            <div class="hero-metric-value">Upload-first studio</div>
+                        </div>
+                        <div class="hero-metric">
+                            <div class="hero-metric-label">Best for</div>
+                            <div class="hero-metric-value">Exploration + storyfinding</div>
+                        </div>
+                        <div class="hero-metric">
+                            <div class="hero-metric-label">Visual language</div>
+                            <div class="hero-metric-value">Dark archive / ember violet</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="hero-metric">
-                    <div class="hero-metric-label">Best for</div>
-                    <div class="hero-metric-value">Exploration + storyfinding</div>
-                </div>
-                <div class="hero-metric">
-                    <div class="hero-metric-label">Visual language</div>
-                    <div class="hero-metric-value">Dark archive / ember violet</div>
+                <div class="hero-crest-wrap">
+                    <img class="hero-crest" src="%s" alt="Velora dragon crest" />
                 </div>
             </div>
             <div class="feature-grid">
@@ -847,7 +1052,7 @@ if uploaded_file is None:
                 </div>
             </div>
         </div>
-        """,
+        """ % CREST_URI,
         unsafe_allow_html=True,
     )
 
@@ -885,28 +1090,35 @@ except Exception as exc:
 st.markdown(
     f"""
     <div class="hero">
-        <div class="hero-kicker">Analysis Workspace</div>
-        <div class="hero-title">Dataset Analysis Workspace</div>
-        <div class="hero-copy">
-            Reviewing <strong>{uploaded_file.name}</strong> with {len(df):,} rows and {len(df.columns):,} columns.
-        </div>
-        <div class="pill-row">
-            <div class="pill">{len(df):,} rows</div>
-            <div class="pill">{len(df.columns):,} columns</div>
-            <div class="pill">{int(df.isna().sum().sum()):,} missing values</div>
-        </div>
-        <div class="hero-metrics">
-            <div class="hero-metric">
-                <div class="hero-metric-label">Numeric fields</div>
-                <div class="hero-metric-value">{len(df.select_dtypes(include='number').columns):,}</div>
+        <div class="hero-shell">
+            <div>
+                <div class="hero-kicker">Analysis Workspace</div>
+                <div class="hero-title">Dataset Analysis Workspace</div>
+                <div class="hero-copy">
+                    Reviewing <strong>{uploaded_file.name}</strong> with {len(df):,} rows and {len(df.columns):,} columns.
+                </div>
+                <div class="pill-row">
+                    <div class="pill">{len(df):,} rows</div>
+                    <div class="pill">{len(df.columns):,} columns</div>
+                    <div class="pill">{int(df.isna().sum().sum()):,} missing values</div>
+                </div>
+                <div class="hero-metrics">
+                    <div class="hero-metric">
+                        <div class="hero-metric-label">Numeric fields</div>
+                        <div class="hero-metric-value">{len(df.select_dtypes(include='number').columns):,}</div>
+                    </div>
+                    <div class="hero-metric">
+                        <div class="hero-metric-label">Categorical fields</div>
+                        <div class="hero-metric-value">{len([col for col in df.columns if infer_column_role(df[col]) in {'categorical', 'text'}]):,}</div>
+                    </div>
+                    <div class="hero-metric">
+                        <div class="hero-metric-label">Detected dates</div>
+                        <div class="hero-metric-value">{len([col for col in df.columns if infer_column_role(df[col]) == 'datetime']):,}</div>
+                    </div>
+                </div>
             </div>
-            <div class="hero-metric">
-                <div class="hero-metric-label">Categorical fields</div>
-                <div class="hero-metric-value">{len([col for col in df.columns if infer_column_role(df[col]) in {'categorical', 'text'}]):,}</div>
-            </div>
-            <div class="hero-metric">
-                <div class="hero-metric-label">Detected dates</div>
-                <div class="hero-metric-value">{len([col for col in df.columns if infer_column_role(df[col]) == 'datetime']):,}</div>
+            <div class="hero-crest-wrap">
+                <img class="hero-crest" src="{CREST_URI}" alt="Velora dragon crest" />
             </div>
         </div>
     </div>
