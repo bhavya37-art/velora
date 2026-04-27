@@ -7,7 +7,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.metrics import accuracy_score, mean_absolute_error, r2_score
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.metrics import accuracy_score, confusion_matrix, mean_absolute_error, r2_score
 from sklearn.model_selection import train_test_split
 
 
@@ -565,6 +566,10 @@ def load_csv(uploaded_file) -> pd.DataFrame:
     return pd.read_csv(uploaded_file)
 
 
+def load_local_csv(file_path: str) -> pd.DataFrame:
+    return pd.read_csv(file_path)
+
+
 def try_parse_datetimes(df: pd.DataFrame) -> pd.DataFrame:
     parsed = df.copy()
     object_columns = parsed.select_dtypes(include=["object"]).columns
@@ -584,6 +589,62 @@ def try_parse_datetimes(df: pd.DataFrame) -> pd.DataFrame:
             if converted.notna().sum() >= max(5, int(len(parsed) * 0.5)):
                 parsed[col] = converted
     return parsed
+
+
+def apply_cleaning_pipeline(
+    df: pd.DataFrame,
+    fill_missing: str,
+    drop_missing_rows: bool,
+    remove_duplicates: bool,
+) -> tuple[pd.DataFrame, dict]:
+    cleaned = df.copy()
+    summary = {
+        "rows_before": len(df),
+        "rows_after": len(df),
+        "missing_before": int(df.isna().sum().sum()),
+        "missing_after": int(df.isna().sum().sum()),
+        "duplicates_before": int(df.duplicated().sum()),
+        "duplicates_after": int(df.duplicated().sum()),
+        "actions": [],
+    }
+
+    if fill_missing == "Fill numeric with median and categories with mode":
+        numeric_cols = cleaned.select_dtypes(include="number").columns.tolist()
+        other_cols = [col for col in cleaned.columns if col not in numeric_cols]
+        for col in numeric_cols:
+            cleaned[col] = pd.to_numeric(cleaned[col], errors="coerce")
+            if cleaned[col].isna().any():
+                cleaned[col] = cleaned[col].fillna(cleaned[col].median())
+        for col in other_cols:
+            if cleaned[col].isna().any():
+                mode = cleaned[col].mode(dropna=True)
+                fallback = mode.iloc[0] if not mode.empty else "Missing"
+                cleaned[col] = cleaned[col].fillna(fallback)
+        summary["actions"].append("Filled missing numeric values with median and category values with mode.")
+    elif fill_missing == "Fill everything with placeholder":
+        for col in cleaned.columns:
+            if pd.api.types.is_numeric_dtype(cleaned[col]):
+                cleaned[col] = pd.to_numeric(cleaned[col], errors="coerce").fillna(0)
+            else:
+                cleaned[col] = cleaned[col].fillna("Missing")
+        summary["actions"].append("Filled all missing values with placeholders.")
+
+    if drop_missing_rows:
+        before = len(cleaned)
+        cleaned = cleaned.dropna().copy()
+        removed = before - len(cleaned)
+        summary["actions"].append(f"Dropped rows with missing values: {removed}.")
+
+    if remove_duplicates:
+        before = len(cleaned)
+        cleaned = cleaned.drop_duplicates().copy()
+        removed = before - len(cleaned)
+        summary["actions"].append(f"Removed duplicate rows: {removed}.")
+
+    summary["rows_after"] = len(cleaned)
+    summary["missing_after"] = int(cleaned.isna().sum().sum())
+    summary["duplicates_after"] = int(cleaned.duplicated().sum())
+    return cleaned, summary
 
 
 def kpi_card(label: str, value: str) -> None:
@@ -708,6 +769,112 @@ def describe_time_trend(grouped: pd.DataFrame, dt_col: str) -> str:
     )
 
 
+def build_analysis_summary_text(df: pd.DataFrame, cleaning_summary: dict | None = None) -> str:
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    datetime_cols = [col for col in df.columns if infer_column_role(df[col]) == "datetime"]
+    categorical_cols = [col for col in df.columns if infer_column_role(df[col]) in {"categorical", "text"}]
+
+    lines = [
+        "Velora Analysis Summary",
+        "",
+        f"Rows: {len(df):,}",
+        f"Columns: {len(df.columns):,}",
+        f"Numeric fields: {len(numeric_cols):,}",
+        f"Categorical/text fields: {len(categorical_cols):,}",
+        f"Datetime fields: {len(datetime_cols):,}",
+        f"Missing values: {int(df.isna().sum().sum()):,}",
+        f"Duplicate rows: {int(df.duplicated().sum()):,}",
+    ]
+
+    if cleaning_summary:
+        lines.extend(
+            [
+                "",
+                "Cleaning Summary",
+                f"Rows before cleaning: {cleaning_summary['rows_before']:,}",
+                f"Rows after cleaning: {cleaning_summary['rows_after']:,}",
+                f"Missing values before cleaning: {cleaning_summary['missing_before']:,}",
+                f"Missing values after cleaning: {cleaning_summary['missing_after']:,}",
+                f"Duplicates before cleaning: {cleaning_summary['duplicates_before']:,}",
+                f"Duplicates after cleaning: {cleaning_summary['duplicates_after']:,}",
+            ]
+        )
+        if cleaning_summary["actions"]:
+            lines.append("Actions applied:")
+            lines.extend([f"- {action}" for action in cleaning_summary["actions"]])
+
+    return "\n".join(lines)
+
+
+def generate_smart_recommendations(df: pd.DataFrame, model_bundle: dict | None = None) -> list[str]:
+    recommendations = []
+    missing_total = int(df.isna().sum().sum())
+    duplicate_total = int(df.duplicated().sum())
+
+    if missing_total > 0:
+        worst_col = df.isna().sum().sort_values(ascending=False).index[0]
+        recommendations.append(
+            f"Focus on cleaning `{worst_col}` first because the dataset still contains {missing_total:,} missing values."
+        )
+
+    if duplicate_total > 0:
+        recommendations.append(
+            f"Remove or investigate duplicate rows because the file still contains {duplicate_total:,} duplicates that can distort charts and predictions."
+        )
+
+    datetime_cols = [col for col in df.columns if infer_column_role(df[col]) == "datetime"]
+    if datetime_cols:
+        dt_col = datetime_cols[0]
+        grouped = (
+            df.assign(_date_bucket=df[dt_col].dt.to_period("M").astype(str))
+            .groupby("_date_bucket")
+            .size()
+            .reset_index(name="Rows")
+        )
+        if len(grouped) >= 2:
+            peak = grouped.loc[grouped["Rows"].idxmax()]
+            low = grouped.loc[grouped["Rows"].idxmin()]
+            if peak["Rows"] > low["Rows"] * 1.5:
+                recommendations.append(
+                    f"There is a strong time pattern in `{dt_col}`. Compare {peak['_date_bucket']} and {low['_date_bucket']} to investigate spikes or drop-offs."
+                )
+
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    if numeric_cols:
+        std_series = df[numeric_cols].std(numeric_only=True).sort_values(ascending=False)
+        if not std_series.empty:
+            top_variable = std_series.index[0]
+            recommendations.append(
+                f"`{top_variable}` changes the most across the dataset, so it is a strong candidate for deeper analysis or filtering."
+            )
+
+    categorical_cols = [col for col in df.columns if infer_column_role(df[col]) in {"categorical", "text"}]
+    if categorical_cols:
+        cat_col = categorical_cols[0]
+        counts = df[cat_col].fillna("Missing").astype(str).value_counts(normalize=True)
+        if not counts.empty and counts.iloc[0] > 0.55:
+            recommendations.append(
+                f"`{cat_col}` is dominated by `{counts.index[0]}` ({counts.iloc[0] * 100:.1f}%), so consider segmenting by other fields for a more balanced view."
+            )
+
+    if model_bundle is not None and not model_bundle["feature_importance"].empty:
+        top_feature = model_bundle["feature_importance"].iloc[0]
+        recommendations.append(
+            f"For prediction, prioritize `{top_feature['Feature']}` because it had the strongest influence on the model's output."
+        )
+
+        if model_bundle["model_type"] == "regression":
+            recommendations.append(
+                f"Compare the Random Forest model against the linear baseline to explain why a more flexible model was needed for `{model_bundle['target_col']}`."
+            )
+        else:
+            recommendations.append(
+                f"Review the confusion matrix for `{model_bundle['target_col']}` to spot which categories are easiest or hardest for the model to distinguish."
+            )
+
+    return recommendations[:6]
+
+
 def get_prediction_target_options(df: pd.DataFrame) -> list[str]:
     options = []
     for col in df.columns:
@@ -785,33 +952,49 @@ def train_prediction_model(df: pd.DataFrame, target_col: str) -> dict:
 
     if model_type == "regression":
         model = RandomForestRegressor(random_state=42, n_estimators=200)
+        baseline_model = LinearRegression()
         model.fit(X_train, y_train)
+        baseline_model.fit(X_train, y_train)
         preds = model.predict(X_test)
+        baseline_preds = baseline_model.predict(X_test)
         metrics = {
             "primary_label": "Average Error",
             "primary_value": mean_absolute_error(y_test, preds),
             "secondary_label": "R2 Score",
             "secondary_value": r2_score(y_test, preds),
+            "baseline_label": "Linear Regression Error",
+            "baseline_value": mean_absolute_error(y_test, baseline_preds),
         }
         explanation = (
             f"Velora is predicting a number for `{target_col}`. "
-            f"On the holdout test data, the average miss was about {metrics['primary_value']:.2f}. "
-            f"The R2 score is {metrics['secondary_value']:.2f}, which tells you how well the model captures the overall pattern."
+            f"It used 80% of the data for training and 20% for testing. "
+            f"On the test data, the random forest model missed by about {metrics['primary_value']:.2f} on average. "
+            f"For comparison, the linear baseline missed by about {metrics['baseline_value']:.2f}."
         )
+        confusion_df = None
     else:
         model = RandomForestClassifier(random_state=42, n_estimators=200)
+        baseline_model = LogisticRegression(max_iter=2000)
         model.fit(X_train, y_train)
+        baseline_model.fit(X_train, y_train)
         preds = model.predict(X_test)
+        baseline_preds = baseline_model.predict(X_test)
+        labels = sorted(pd.Series(y).astype(str).unique().tolist())
+        cm = confusion_matrix(y_test, preds, labels=labels)
+        confusion_df = pd.DataFrame(cm, index=labels, columns=labels)
         metrics = {
             "primary_label": "Accuracy",
             "primary_value": accuracy_score(y_test, preds),
             "secondary_label": "Classes",
             "secondary_value": y.nunique(),
+            "baseline_label": "Logistic Baseline Accuracy",
+            "baseline_value": accuracy_score(y_test, baseline_preds),
         }
         explanation = (
             f"Velora is predicting a category for `{target_col}`. "
-            f"On the holdout test data, it was correct about {metrics['primary_value'] * 100:.1f}% of the time. "
-            f"This target has {int(metrics['secondary_value'])} possible categories."
+            f"It used 80% of the data for training and 20% for testing. "
+            f"On the test data, the random forest model was correct about {metrics['primary_value'] * 100:.1f}% of the time, "
+            f"while the logistic baseline reached about {metrics['baseline_value'] * 100:.1f}%."
         )
 
     feature_importance = (
@@ -849,6 +1032,9 @@ def train_prediction_model(df: pd.DataFrame, target_col: str) -> dict:
         "explanation": explanation,
         "feature_importance": feature_importance,
         "row_count": len(model_df),
+        "train_rows": len(X_train),
+        "test_rows": len(X_test),
+        "confusion_df": confusion_df,
     }
 
 
@@ -860,11 +1046,12 @@ def build_prediction_lab(df: pd.DataFrame) -> None:
 
     selected_target = st.selectbox("Choose the column Velora should predict", target_options, key="prediction_target")
 
-    try:
-        model_bundle = train_prediction_model(df, selected_target)
-    except Exception as exc:
-        st.warning(f"Velora could not train a prediction model for this column: {exc}")
-        return
+    with st.spinner("Training models and evaluating the prediction setup..."):
+        try:
+            model_bundle = train_prediction_model(df, selected_target)
+        except Exception as exc:
+            st.warning(f"Velora could not train a prediction model for this column: {exc}")
+            return
 
     left, right = st.columns([1.2, 1])
 
@@ -875,6 +1062,7 @@ def build_prediction_lab(df: pd.DataFrame) -> None:
         st.write(f"Model type: `{model_bundle['model_type'].title()}`")
         st.write(f"Training rows used: `{model_bundle['row_count']:,}`")
         st.write(f"Input features used: `{len(model_bundle['feature_cols'])}`")
+        st.write(f"Train/Test split: `{model_bundle['train_rows']:,}` for training and `{model_bundle['test_rows']:,}` for testing")
         st.markdown("</div>", unsafe_allow_html=True)
 
     with right:
@@ -884,12 +1072,26 @@ def build_prediction_lab(df: pd.DataFrame) -> None:
         if model_bundle["model_type"] == "regression":
             st.metric(metrics["primary_label"], f"{metrics['primary_value']:.2f}")
             st.metric(metrics["secondary_label"], f"{metrics['secondary_value']:.2f}")
+            st.metric(metrics["baseline_label"], f"{metrics['baseline_value']:.2f}")
         else:
             st.metric(metrics["primary_label"], f"{metrics['primary_value'] * 100:.1f}%")
             st.metric(metrics["secondary_label"], int(metrics["secondary_value"]))
+            st.metric(metrics["baseline_label"], f"{metrics['baseline_value'] * 100:.1f}%")
         st.markdown("</div>", unsafe_allow_html=True)
 
     write_plain_summary("How to read this prediction model", model_bundle["explanation"])
+
+    recommendations = generate_smart_recommendations(df, model_bundle)
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    section_header("Smart Recommendation Engine", "Signature Feature", "Advice generated from the dataset and the trained model")
+    for rec in recommendations:
+        st.write(f"- {rec}")
+    st.markdown("</div>", unsafe_allow_html=True)
+    write_plain_summary(
+        "Why this matters",
+        "Instead of only showing metrics, Velora converts the analysis and model behavior into practical next steps. "
+        "This makes the tool easier to present and easier for a non-technical person to act on.",
+    )
 
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     section_header("Prediction Form", "Try It")
@@ -958,6 +1160,83 @@ def build_prediction_lab(df: pd.DataFrame) -> None:
         "What this chart means",
         "The features at the top had the biggest impact on the model's decision. "
         "This does not prove cause and effect, but it does show which fields the model relied on most.",
+    )
+
+    if model_bundle["model_type"] == "classification" and model_bundle["confusion_df"] is not None:
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        section_header("Confusion Matrix", "Explainability")
+        cm_df = model_bundle["confusion_df"]
+        fig = px.imshow(
+            cm_df,
+            text_auto=True,
+            color_continuous_scale="Blues",
+            aspect="auto",
+            labels=dict(x="Predicted", y="Actual", color="Count"),
+        )
+        style_figure(fig, height=420)
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        write_plain_summary(
+            "How to read the confusion matrix",
+            "The diagonal cells show correct predictions. Off-diagonal cells show where the model confused one category with another. "
+            "This helps you explain not just how accurate the model is, but where it makes mistakes.",
+        )
+
+
+def build_data_prep_tab(original_df: pd.DataFrame, cleaned_df: pd.DataFrame, cleaning_summary: dict) -> None:
+    left, right = st.columns([1, 1])
+
+    with left:
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        section_header("Before vs After", "Data Cleaning")
+        comparison_rows = [
+            ["Rows", cleaning_summary["rows_before"], cleaning_summary["rows_after"]],
+            ["Missing Values", cleaning_summary["missing_before"], cleaning_summary["missing_after"]],
+            ["Duplicate Rows", cleaning_summary["duplicates_before"], cleaning_summary["duplicates_after"]],
+        ]
+        comparison_df = pd.DataFrame(comparison_rows, columns=["Metric", "Before", "After"])
+        st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+        if cleaning_summary["actions"]:
+            st.write("Applied actions:")
+            for action in cleaning_summary["actions"]:
+                st.write(f"- {action}")
+        else:
+            st.write("No cleaning actions applied yet. Use the sidebar controls to modify the dataset.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with right:
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        section_header("Export", "Practical Use")
+        cleaned_csv = cleaned_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download Cleaned Dataset",
+            data=cleaned_csv,
+            file_name="velora_cleaned_dataset.csv",
+            mime="text/csv",
+        )
+        summary_text = build_analysis_summary_text(cleaned_df, cleaning_summary)
+        st.download_button(
+            "Download Analysis Summary",
+            data=summary_text.encode("utf-8"),
+            file_name="velora_analysis_summary.txt",
+            mime="text/plain",
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    section_header("Raw vs Cleaned Preview", "Proof of Impact")
+    preview_left, preview_right = st.columns(2)
+    with preview_left:
+        st.write("Original dataset")
+        st.dataframe(original_df.head(8), use_container_width=True)
+    with preview_right:
+        st.write("Cleaned dataset")
+        st.dataframe(cleaned_df.head(8), use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    write_plain_summary(
+        "Why this tab matters",
+        "This section proves that Velora is not only viewing data. It also helps prepare the dataset for better charts and better machine learning results.",
     )
 
 
@@ -1259,6 +1538,12 @@ def build_insights(df: pd.DataFrame) -> None:
         "If a field is mentioned here, it usually means it is worth paying attention to first.",
     )
 
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    section_header("Smart Recommendations", "Signature Feature", "Action-oriented advice generated from your current dataset")
+    for recommendation in generate_smart_recommendations(df):
+        st.write(f"- {recommendation}")
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 with st.sidebar:
     st.markdown(
@@ -1279,16 +1564,38 @@ with st.sidebar:
         """,
         unsafe_allow_html=True,
     )
+    sample_datasets = {
+        "None": None,
+        "Sales Demo": "sales_performance_dataset.csv",
+        "Student Demo": "student_performance_dataset.csv",
+        "Ecommerce Demo": "ecommerce_orders_dataset.csv",
+        "HR Demo": "hr_employee_dataset.csv",
+    }
+    selected_sample = st.selectbox("Try a sample dataset", list(sample_datasets.keys()))
     uploaded_file = st.file_uploader("Upload a CSV file", type=["csv"])
     st.caption("Upload any structured CSV and the app will profile it automatically.")
+    st.markdown("---")
+    st.subheader("Cleaning Controls")
+    fill_missing = st.selectbox(
+        "Missing value handling",
+        [
+            "Keep as-is",
+            "Fill numeric with median and categories with mode",
+            "Fill everything with placeholder",
+        ],
+    )
+    drop_missing_rows = st.checkbox("Drop rows with missing values")
+    remove_duplicates = st.checkbox("Remove duplicate rows")
 
-    if uploaded_file is not None:
+    if uploaded_file is not None or sample_datasets[selected_sample] is not None:
         st.success("Dataset loaded")
     else:
         st.info("No file uploaded yet")
 
 
-if uploaded_file is None:
+active_sample_path = sample_datasets[selected_sample]
+
+if uploaded_file is None and active_sample_path is None:
     st.markdown(
         """
         <div class="hero">
@@ -1391,8 +1698,20 @@ if uploaded_file is None:
 
 
 try:
-    df = load_csv(uploaded_file)
-    df = try_parse_datetimes(df)
+    with st.spinner("Analyzing data and preparing the workspace..."):
+        if uploaded_file is not None:
+            source_name = uploaded_file.name
+            raw_df = load_csv(uploaded_file)
+        else:
+            source_name = Path(active_sample_path).name
+            raw_df = load_local_csv(active_sample_path)
+        raw_df = try_parse_datetimes(raw_df)
+        df, cleaning_summary = apply_cleaning_pipeline(
+            raw_df,
+            fill_missing=fill_missing,
+            drop_missing_rows=drop_missing_rows,
+            remove_duplicates=remove_duplicates,
+        )
 except Exception as exc:
     st.error(f"Could not read that CSV file: {exc}")
     st.stop()
@@ -1406,7 +1725,7 @@ st.markdown(
                 <div class="hero-kicker">Analysis Workspace</div>
                 <div class="hero-title">Dataset Analysis Workspace</div>
                 <div class="hero-copy">
-                    Reviewing <strong>{uploaded_file.name}</strong> with {len(df):,} rows and {len(df.columns):,} columns.
+                    Reviewing <strong>{source_name}</strong> with {len(df):,} rows and {len(df.columns):,} columns.
                 </div>
                 <div class="pill-row">
                     <div class="pill">{len(df):,} rows</div>
@@ -1439,8 +1758,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
-    ["Overview", "Numeric Analysis", "Category Analysis", "Time Analysis", "Prediction Lab", "Data Table"]
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
+    ["Overview", "Numeric Analysis", "Category Analysis", "Time Analysis", "Prediction Lab", "Data Prep & Export", "Data Table"]
 )
 
 with tab1:
@@ -1461,6 +1780,9 @@ with tab5:
     build_prediction_lab(df)
 
 with tab6:
+    build_data_prep_tab(raw_df, df, cleaning_summary)
+
+with tab7:
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     section_header("Dataset Preview", "Table")
     st.dataframe(df, use_container_width=True)
@@ -1468,7 +1790,7 @@ with tab6:
     st.download_button(
         "Download Current Dataset",
         data=csv_bytes,
-        file_name=f"analyzed_{uploaded_file.name}",
+        file_name=f"analyzed_{source_name}",
         mime="text/csv",
     )
     st.markdown("</div>", unsafe_allow_html=True)
