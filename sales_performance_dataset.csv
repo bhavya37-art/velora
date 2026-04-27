@@ -1,0 +1,16 @@
+Order_ID,Order_Date,Region,Sales_Rep,Product_Category,Units_Sold,Unit_Price,Discount_Percent,Revenue,Customer_Satisfaction
+S001,2026-01-05,North,Aisha,Electronics,24,1200,5,27360,4.6
+S002,2026-01-11,West,Rohan,Furniture,15,850,10,11475,4.2
+S003,2026-01-18,South,Meera,Accessories,42,120,0,5040,4.8
+S004,2026-02-02,East,Kabir,Electronics,18,1500,8,24840,4.1
+S005,2026-02-10,North,Diya,Software,30,400,15,10200,4.4
+S006,2026-02-17,West,Arjun,Furniture,12,950,5,10830,3.9
+S007,2026-03-01,South,Sana,Accessories,55,90,0,4950,4.7
+S008,2026-03-09,East,Naina,Software,20,500,12,8800,4.0
+S009,2026-03-16,North,Vikram,Electronics,10,2000,7,18600,4.5
+S010,2026-03-25,West,Isha,Furniture,22,780,6,16130.4,4.3
+S011,2026-04-04,South,Aarav,Accessories,60,110,3,6402,4.9
+S012,2026-04-12,East,Priya,Software,28,420,10,10584,4.2
+S013,2026-04-20,North,Rahul,Electronics,16,1750,4,26880,4.6
+S014,2026-05-03,West,Anaya,Furniture,14,1020,9,12994.8,3.8
+S015,2026-05-14,South,Kiran,Software,34,390,5,12597,4.4

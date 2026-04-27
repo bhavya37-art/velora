@@ -1,0 +1,16 @@
+Order_ID,Order_Date,Customer_City,Category,Payment_Method,Order_Value,Items_Count,Delivery_Days,Return_Flag,Customer_Segment
+O001,2026-01-03,Mumbai,Fashion,UPI,2499,3,2,No,Prime
+O002,2026-01-08,Delhi,Electronics,Credit Card,18999,1,4,No,Prime
+O003,2026-01-15,Bangalore,Home Decor,Cash on Delivery,3299,4,5,Yes,Standard
+O004,2026-01-22,Hyderabad,Beauty,UPI,1799,2,3,No,Standard
+O005,2026-02-02,Chennai,Grocery,Debit Card,1299,8,1,No,Prime
+O006,2026-02-10,Pune,Fashion,Wallet,4599,5,3,Yes,Standard
+O007,2026-02-18,Kolkata,Electronics,Credit Card,22499,2,6,No,Prime
+O008,2026-03-01,Ahmedabad,Books,UPI,899,3,2,No,Standard
+O009,2026-03-09,Mumbai,Home Decor,Debit Card,6199,2,4,Yes,Prime
+O010,2026-03-18,Delhi,Beauty,Wallet,1499,1,2,No,Standard
+O011,2026-04-04,Bangalore,Grocery,UPI,999,6,1,No,Prime
+O012,2026-04-13,Chennai,Fashion,Credit Card,3899,4,3,No,Prime
+O013,2026-04-27,Hyderabad,Books,Cash on Delivery,1299,5,5,Yes,Standard
+O014,2026-05-06,Pune,Electronics,Debit Card,15499,1,4,No,Prime
+O015,2026-05-17,Kolkata,Beauty,UPI,2199,2,2,No,Standard

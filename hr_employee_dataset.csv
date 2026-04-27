@@ -1,0 +1,16 @@
+Employee_ID,Join_Date,Department,Role,Location,Experience_Years,Monthly_Salary,Performance_Rating,Training_Hours,Attrition_Risk
+E001,2021-06-14,Engineering,Backend Developer,Bangalore,4,85000,4.5,32,Low
+E002,2020-03-08,Marketing,SEO Specialist,Delhi,6,68000,4.0,20,Low
+E003,2022-01-19,HR,Recruiter,Mumbai,3,52000,3.8,18,Medium
+E004,2019-11-02,Finance,Analyst,Hyderabad,7,91000,4.6,24,Low
+E005,2023-04-25,Engineering,Frontend Developer,Pune,2,72000,3.9,28,Medium
+E006,2021-09-12,Operations,Process Manager,Chennai,5,78000,4.2,16,Low
+E007,2024-02-06,Sales,Account Executive,Delhi,1,50000,3.4,12,High
+E008,2020-07-30,Engineering,Data Analyst,Bangalore,5,83000,4.4,36,Low
+E009,2018-12-18,HR,HR Manager,Mumbai,8,96000,4.7,22,Low
+E010,2023-08-11,Marketing,Content Strategist,Pune,2,61000,3.6,14,Medium
+E011,2022-05-09,Finance,Accounts Executive,Hyderabad,3,59000,3.7,10,Medium
+E012,2019-01-24,Operations,Supply Planner,Chennai,7,88000,4.3,19,Low
+E013,2024-06-03,Sales,Business Development Rep,Bangalore,1,47000,3.2,9,High
+E014,2021-10-17,Engineering,QA Engineer,Noida,4,76000,4.1,26,Low
+E015,2022-11-28,Support,Customer Success Lead,Delhi,3,64000,3.9,21,Medium
